@@ -1,1 +1,8 @@
+
+# Directories
+WEB-INF/classes/
+org/*
+
+# Files
 *.DS_Store
+META-INF/context.xml

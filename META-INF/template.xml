@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Rename to context.xml and set up a server ip, an username and a password -->
+
+<Context path="/buyhub">
+    <Resource 
+        auth="Container" driverClassName="com.mysql.cj.jdbc.Driver" 
+        maxActive="100" maxIdle="30" maxWait="10000" name="jdbc/datasource_buyhub" 
+        url="jdbc:mysql://server_ip_or_domain/buyhub_db?serverTimezone=UTC" 
+        username="" password="" 
+        type="javax.sql.DataSource"/>
+</Context>
