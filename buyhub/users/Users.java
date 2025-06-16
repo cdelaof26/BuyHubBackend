@@ -2,11 +2,14 @@ package buyhub.users;
 
 import buyhub.BuyHub;
 import buyhub.Utilities;
+import com.google.gson.JsonObject;
 import java.sql.SQLException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Types;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Consumes;
@@ -27,60 +30,73 @@ public class Users {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response signup(String json) throws SQLException {
-        ParamUser p = (ParamUser) BuyHub.gson.fromJson(json, ParamUser.class);
-        String password = p.getPassword();
-        if (p.getEmail() == null || password == null)
-            return Response.status(400).entity(BuyHub.gson.toJson(new Error("Se requiere de un correo y una contraseña"))).build();
+        User user = (User) BuyHub.gson.fromJson(json, User.class);
+        if (user == null)
+            return Response.status(400).entity(BuyHub.errorJson("Sign up method expects a JSON body")).build();
+        
+        String password = user.getPassword();
+        if (user.getEmail() == null || password == null)
+            return Response.status(400).entity(BuyHub.errorJson("Se requiere de un correo y una contraseña")).build();
 
         password = Utilities.hash(password);
         if (password == null)
             return Response.serverError().build();
         
-        if (p.getName() == null)
-            return Response.status(400).entity(BuyHub.gson.toJson(new Error("El campo nombre es obligatorio"))).build();
+        String name = user.getName();
+        if (name == null)
+            return Response.status(400).entity(BuyHub.requiredValidationErrorJson("nombre")).build();
+        if (name.length() > 100)
+            return Response.status(400).entity(BuyHub.lengthValidationErrorJson("nombre", "100")).build();
         
-        if (p.getPaternalSurname() == null)
-            return Response.status(400).entity(BuyHub.gson.toJson(new Error("El campo apellido paterno es obligatorio"))).build();
+        String paternalSurname = user.getPaternalSurname();
+        if (paternalSurname == null)
+            return Response.status(400).entity(BuyHub.requiredValidationErrorJson("apellido paterno")).build();
+        if (paternalSurname.length() > 100)
+            return Response.status(400).entity(BuyHub.lengthValidationErrorJson("apellido paterno", "100")).build();
         
-        if (p.getBirthday() == null)
-            return Response.status(400).entity(BuyHub.gson.toJson(new Error("El campo fecha de nacimiento es obligatorio"))).build();
+        String maternalSurname = user.getMaternalSurname();
+        if (maternalSurname != null && maternalSurname.length() > 100)
+            return Response.status(400).entity(BuyHub.lengthValidationErrorJson("apellido materno", "100")).build();
+        
+        if (user.getBirthday() == null)
+            return Response.status(400).entity(BuyHub.requiredValidationErrorJson("fecha de nacimiento")).build();
         
         Connection connection = BuyHub.getConnection();
         try {
             connection.setAutoCommit(false);
             
             PreparedStatement query = connection.prepareStatement(
-                    "INSERT INTO usuarios (email, nombre, apellido_paterno, apellido_materno, fecha_nacimiento, telefono, password) "
+                    "INSERT INTO users (email, password, name, paternal_surname, maternal_surname, birthday, phone_number) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?);"
             );
             
             try {
-                query.setString(1, p.getEmail());
-                query.setString(2, p.getName());
-                query.setString(3, p.getPaternalSurname());
+                query.setString(1, user.getEmail());
+                query.setString(2, password);
+                query.setString(3, name);
+                query.setString(4, paternalSurname);
                 
-                if (p.getMaternalSurname() != null)
-                    query.setString(4, p.getMaternalSurname());
+                if (maternalSurname != null)
+                    query.setString(5, maternalSurname);
                 else
-                    query.setNull(4, Types.VARCHAR);
+                    query.setNull(5, Types.VARCHAR);
                 
-                query.setTimestamp(5, p.getBirthday());
+                query.setTimestamp(6, user.getBirthday());
                 
-                if (p.getPhoneNumber() != null)
-                    query.setLong(6, p.getPhoneNumber());
+                if (user.getPhoneNumber() != null)
+                    query.setLong(7, user.getPhoneNumber());
                 else
-                    query.setNull(6, Types.BIGINT);
+                    query.setNull(7, Types.BIGINT);
                 
-                query.setString(7, password);
                 query.execute();
             } finally {
                 query.close();
             }
             
-            if (p.getPhoto() != null) {
-                query = connection.prepareStatement("INSERT INTO fotos_usuarios(foto, id_usuario) VALUES (?, LAST_INSERT_ID())");
+            if (user.getPhoto() != null) {
+                query = connection.prepareStatement("INSERT INTO user_photo(photo, user_id) VALUES (?, LAST_INSERT_ID())");
                 try {
-                    query.setBytes(1, p.getPhoto());
+                    query.setBytes(1, user.getPhoto());
                     query.executeUpdate();
                 } finally {
                     query.close();
@@ -88,15 +104,16 @@ public class Users {
             }
             
             connection.commit();
+            return Response.ok().entity(BuyHub.jsonOk()).build();
         } catch (SQLException e) {
+            Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, e);
+            
             connection.rollback();
-            return Response.status(400).entity(BuyHub.gson.toJson(new Error(e.getMessage()))).build();
+            return Response.status(400).entity(BuyHub.errorJson(e.getMessage())).build();
         } finally {
             connection.setAutoCommit(true);
             connection.close();
         }
-        
-        return Response.ok().entity("{\"message\": \"ok\"}").build();
     }
 
     @POST
@@ -104,33 +121,38 @@ public class Users {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response login(String json) throws SQLException {
-        ParamUser p = (ParamUser) BuyHub.gson.fromJson(json, ParamUser.class);
-        String email = p.getEmail();
-        String password = p.getPassword();
+        User user = (User) BuyHub.gson.fromJson(json, User.class);
+        if (user == null)
+            return Response.status(400).entity(BuyHub.errorJson("login method expects a JSON body")).build();
+        
+        String email = user.getEmail();
+        String password = user.getPassword();
         if (email == null || password == null)
-            return Response.status(400).entity(BuyHub.gson.toJson(new Error("Se requiere de un correo y una contraseña"))).build();
+            return Response.status(400).entity(BuyHub.errorJson("Se requiere de un correo y una contraseña")).build();
 
         password = Utilities.hash(password);
         if (password == null)
             return Response.serverError().build();
                 
         String token = Utilities.getToken();
+        int userId = -1;
         
         try (Connection connection = BuyHub.getConnection()) {
-            PreparedStatement query = connection.prepareStatement("SELECT 1 FROM usuarios WHERE email=? and password=?");
+            PreparedStatement query = connection.prepareStatement("SELECT * FROM users WHERE email = ? and password = ?");
             try {
                 query.setString(1, email);
                 query.setString(2, password);
 
                 try (ResultSet rs = query.executeQuery()) {
                     if (!rs.next())
-                        return Response.status(400).entity(BuyHub.gson.toJson(new Error("Correo o contraseña incorrectos"))).build();
+                        return Response.status(400).entity(BuyHub.errorJson("Correo o contraseña incorrectos")).build();
+                    userId = rs.getInt("user_id");
                 }
             } finally {
                 query.close();
             }
             
-            query = connection.prepareStatement("UPDATE usuarios SET token = ?, token_expiration = NOW() + INTERVAL 30 MINUTE WHERE email = ?;");
+            query = connection.prepareStatement("UPDATE users SET session_token = ?, session_expires = NOW() + INTERVAL 30 MINUTE WHERE email = ?;");
             try {
                 query.setString(1, token);
                 query.setString(2, email);
@@ -138,11 +160,15 @@ public class Users {
             } finally {
                 query.close();
             }
+            
+            JsonObject responseJson = new JsonObject();
+            responseJson.addProperty("session_token", token);
+            responseJson.addProperty("user_id", userId);
+
+            return Response.ok().entity(responseJson.toString()).build();
         } catch (SQLException e) {
-            return Response.status(400).entity(BuyHub.gson.toJson(new Error(e.getMessage()))).build();
+            Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, e);
+            return Response.status(400).entity(BuyHub.errorJson(e.getMessage())).build();
         }
-        
-        String responseJson = String.format("{\"token\": \"%s\"}", token);
-        return Response.ok().entity(responseJson).build();
     }
 }

@@ -2,7 +2,7 @@ package buyhub.users;
 
 import java.sql.Timestamp;
 
-public class ParamUser {
+public class User {
     private String email;
     private String password;
     
@@ -15,41 +15,31 @@ public class ParamUser {
     private byte [] photo;
 
     public String getEmail() {
-        if (email == null)
-            return null;
-        if (email.trim().equals(""))
+        if (email != null && email.trim().equals(""))
             return null;
         return email;
     }
 
     public String getPassword() {
-        if (password == null)
-            return null;
-        if (password.trim().equals(""))
+        if (password != null && password.trim().equals(""))
             return null;
         return password;
     }
 
     public String getName() {
-        if (name == null)
-            return null;
-        if (name.trim().equals(""))
+        if (name != null && name.trim().equals(""))
             return null;
         return name;
     }
 
     public String getMaternalSurname() {
-        if (maternalSurname == null)
-            return null;
-        if (maternalSurname.trim().equals(""))
+        if (maternalSurname != null && maternalSurname.trim().equals(""))
             return null;
         return maternalSurname;
     }
 
     public String getPaternalSurname() {
-        if (paternalSurname == null)
-            return null;
-        if (paternalSurname.trim().equals(""))
+        if (paternalSurname != null && paternalSurname.trim().equals(""))
             return null;
         return paternalSurname;
     }
