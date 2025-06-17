@@ -11,7 +11,9 @@ import javax.naming.NamingException;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import javax.ws.rs.core.Response;
 
 /**
  * @author cristopher
@@ -32,6 +34,23 @@ public class BuyHub {
             Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, ex);
             System.exit(1);
         }
+    }
+    
+    public static Object validateToken(Connection connection, String userId, String sessionToken) throws SQLException {
+        PreparedStatement query = connection.prepareStatement("SELECT email FROM users WHERE user_id = ? AND session_token = ? AND session_expires > NOW();");
+        try {
+            query.setString(1, userId);
+            query.setString(2, sessionToken);
+
+            try (ResultSet rs = query.executeQuery()) {
+                if (!rs.next())
+                    return Response.status(400).entity(BuyHub.errorJson("La sesión ha expirado o los datos son inválidos. Inicia sesión nuevamente")).build();
+            }
+        } finally {
+            query.close();
+        }
+        
+        return null;
     }
     
     public static boolean updateToken(Connection connection, String sessionToken) throws SQLException {

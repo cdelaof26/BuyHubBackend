@@ -25,7 +25,7 @@ USE `buyhub_db` ;
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `buyhub_db`.`stock` (
   `product_id` INT NOT NULL AUTO_INCREMENT,
-  `name` VARCHAR(64) NOT NULL,
+  `name` VARCHAR(128) NOT NULL,
   `description` TEXT(512) NOT NULL,
   `price` FLOAT NOT NULL,
   `available` INT NOT NULL,
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS `buyhub_db`.`bag` (
   PRIMARY KEY (`product_id`, `user_id`),
   CONSTRAINT `fk_carrito_compra_usuarios1`
     FOREIGN KEY (`user_id`)
-    REFERENCES `buyhub_db`.`user` (`user_id`)
+    REFERENCES `buyhub_db`.`users` (`user_id`)
     ON DELETE NO ACTION
     ON UPDATE NO ACTION,
   CONSTRAINT `fk_carrito_compra_stock1`
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS `buyhub_db`.`user_photo` (
   INDEX (`user_id` ASC) VISIBLE,
   CONSTRAINT ``
     FOREIGN KEY (`user_id`)
-    REFERENCES `buyhub_db`.`user` (`user_id`));
+    REFERENCES `buyhub_db`.`users` (`user_id`));
 
 
 SET SQL_MODE=@OLD_SQL_MODE;

@@ -6,3 +6,4 @@ org/*
 # Files
 *.DS_Store
 META-INF/context.xml
+data_only*

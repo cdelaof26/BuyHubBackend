@@ -13,6 +13,7 @@ import java.util.logging.Logger;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.HeaderParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -22,6 +23,7 @@ import javax.ws.rs.core.Response;
 //   POST
 //     login
 //     signup
+//     validate
 
 @Path("/")
 public class Users {    
@@ -166,6 +168,24 @@ public class Users {
             responseJson.addProperty("user_id", userId);
 
             return Response.ok().entity(responseJson.toString()).build();
+        } catch (SQLException e) {
+            Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, e);
+            return Response.status(400).entity(BuyHub.errorJson(e.getMessage())).build();
+        }
+    }
+    
+    @POST
+    @Path("validate")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response validate(@HeaderParam("User-Id") String userId, @HeaderParam("Session-Token") String sessionToken) throws SQLException {
+        try (Connection connection = BuyHub.getConnection()) {
+            Object result = BuyHub.validateToken(connection, userId, sessionToken);
+            if (result != null)
+                return (Response) result;
+            
+            BuyHub.updateToken(connection, sessionToken);
+            
+            return Response.ok().entity(BuyHub.jsonOk()).build();
         } catch (SQLException e) {
             Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, e);
             return Response.status(400).entity(BuyHub.errorJson(e.getMessage())).build();

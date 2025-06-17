@@ -73,6 +73,7 @@ public class Product {
         user.setDescription(rs.getString("description"));
         user.setPrice(rs.getFloat("price"));
         user.setAvailableStock(rs.getInt("available"));
+        try { user.setPhoto(rs.getBytes("photo")); } catch (SQLException e) { }
         return user;
     }
 }

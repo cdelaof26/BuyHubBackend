@@ -24,7 +24,7 @@ import javax.ws.rs.core.Response;
 //     /
 //   POST - Require [User-Id] and [Session-Token] header parameters
 //     create
-//     buy
+//     addToBag
 
 /**
  * @author cristopher
@@ -79,7 +79,14 @@ public class Products {
         if (userId == null || sessionToken == null)
             return Response.status(400).entity(BuyHub.errorJson("Se requiere de una sesión activa")).build();
         
-        Product product = (Product) BuyHub.gson.fromJson(json, Product.class);
+        Product product;
+        try {
+            product = (Product) BuyHub.gson.fromJson(json, Product.class);
+        } catch (NumberFormatException e) {
+            Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, e);
+            return Response.status(400).entity(BuyHub.errorJson("Campos precio unitario o cantidad disponible no cuentan con un valor adecuado")).build();
+        }
+        
         if (product == null)
             return Response.status(400).entity(BuyHub.errorJson("create product method expects a JSON body")).build();
         
@@ -105,28 +112,19 @@ public class Products {
         if (available == null)
             return Response.status(400).entity(BuyHub.requiredValidationErrorJson("cantidad")).build();
         if (available < 0)
-            return Response.status(400).entity(BuyHub.errorJson("El campo disponible debe contener un número entero positivo")).build();
+            return Response.status(400).entity(BuyHub.errorJson("El campo cantidad debe contener un número entero positivo")).build();
         
         Connection connection = BuyHub.getConnection();
         try {
-            PreparedStatement query = connection.prepareStatement("SELECT username FROM users WHERE user_id = ? AND session_token = ? AND session_expires > NOW();");
-            try {
-                query.setString(1, userId);
-                query.setString(2, sessionToken);
-
-                try (ResultSet rs = query.executeQuery()) {
-                    if (!rs.next())
-                        return Response.status(400).entity(BuyHub.errorJson("La sesión ha expirado o los datos son inválidos")).build();
-                }
-            } finally {
-                query.close();
-            }
+            Object validation = BuyHub.validateToken(connection, userId, sessionToken);
+            if (validation != null)
+                return (Response) validation;
             
             connection.setAutoCommit(false);
             
             BuyHub.updateToken(connection, sessionToken);
             
-            query = connection.prepareStatement(
+            PreparedStatement query = connection.prepareStatement(
                     "INSERT INTO stock (name, description, price, available) "
                             + "VALUES (?, ?, ?, ?)"
             );
@@ -135,15 +133,111 @@ public class Products {
                 query.setString(1, name);
                 query.setString(2, description);
                 query.setFloat(3, price);
-                query.setInt(3, available);
+                query.setInt(4, available);
 
                 query.execute();
-                
-                connection.commit();
-                return Response.ok().entity(BuyHub.jsonOk()).build();
             } finally {
                 query.close();
             }
+            
+//            if (product.getPhoto() == null)
+//                throw new SQLException("No photo :(");
+            
+            if (product.getPhoto() != null) {
+                query = connection.prepareStatement("INSERT INTO product_photo(photo, product_id) VALUES (?, LAST_INSERT_ID())");
+                try {
+                    query.setBytes(1, product.getPhoto());
+                    query.executeUpdate();
+                } finally {
+                    query.close();
+                }
+            }
+            
+            connection.commit();
+            return Response.ok().entity(BuyHub.jsonOk()).build();
+        } catch (SQLException e) {
+            Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, e);
+            
+            connection.rollback();
+            return Response.status(400).entity(BuyHub.errorJson(e.getMessage())).build();
+        } finally {
+            connection.setAutoCommit(true);
+            connection.close();
+        }
+    }
+    
+    @POST
+    @Path("addToBag")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response addToBag(String json, @HeaderParam("User-Id") String userId, @HeaderParam("Session-Token") String sessionToken) throws SQLException {
+        if (userId == null || sessionToken == null)
+            return Response.status(400).entity(BuyHub.errorJson("Se requiere de una sesión activa")).build();
+        
+        Item product = (Item) BuyHub.gson.fromJson(json, Item.class);
+        if (product == null)
+            return Response.status(400).entity(BuyHub.errorJson("addToBag method expects a JSON body")).build();
+        
+        if (product.id == null)
+            return Response.status(400).entity(BuyHub.requiredValidationErrorJson("id del producto")).build();
+        
+        Integer amount = product.amount;
+        if (amount == null)
+            return Response.status(400).entity(BuyHub.requiredValidationErrorJson("cantidad")).build();
+        if (amount < 0)
+            return Response.status(400).entity(BuyHub.errorJson("El campo cantidad debe contener un número entero positivo")).build();
+        
+        Connection connection = BuyHub.getConnection();
+        try {
+            Object validation = BuyHub.validateToken(connection, userId, sessionToken);
+            if (validation != null)
+                return (Response) validation;
+            
+            PreparedStatement query = connection.prepareStatement("SELECT available FROM stock WHERE product_id = ?;");
+            int available;
+            
+            try {
+                query.setInt(1, product.id);
+                ResultSet rs = query.executeQuery();
+                if (!rs.next())
+                    return Response.status(400).entity(BuyHub.errorJson("El producto no existe!?")).build();
+                
+                available = rs.getInt(1);
+                if (available < amount)
+                    return Response.status(400).entity(BuyHub.errorJson("No hay suficientes articulos")).build();
+            } finally {
+                query.close();
+            }
+            
+            connection.setAutoCommit(false);
+            
+            BuyHub.updateToken(connection, sessionToken);
+            
+            query = connection.prepareStatement("INSERT INTO bag (user_id, product_id, amount) VALUES (?, ?, ?)");
+            
+            try {
+                query.setString(1, userId);
+                query.setInt(2, product.id);
+                query.setInt(3, amount);
+                
+                query.execute();
+            } finally {
+                query.close();
+            }
+            
+            query = connection.prepareStatement("UPDATE stock SET available = ? WHERE product_id = ?;");
+            
+            try {
+                query.setInt(1, available - amount);
+                query.setInt(2, product.id);
+                
+                query.execute();
+            } finally {
+                query.close();
+            }
+            
+            connection.commit();
+            return Response.ok().entity(BuyHub.jsonOk()).build();
         } catch (SQLException e) {
             Logger.getLogger(Users.class.getName()).log(Level.SEVERE, null, e);
             
